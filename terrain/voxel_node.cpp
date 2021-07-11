@@ -72,6 +72,7 @@ String VoxelNode::get_configuration_warning() const {
 
 	if (generator.is_valid()) {
 		Ref<Script> script = generator->get_script();
+		bool can_check_generator_channels = true;
 
 		if (script.is_valid()) {
 			if (script->is_tool()) {
@@ -79,16 +80,19 @@ String VoxelNode::get_configuration_warning() const {
 				return TTR("Careful, don't edit your custom generator while it's running, "
 						   "it can cause crashes. Turn off `run_stream_in_editor` before doing so.");
 			} else {
-				return TTR("The custom generator is not tool, the editor won't be able to use it.");
+				can_check_generator_channels = false;
+				// return TTR("The custom generator is not tool, the editor won't be able to use it.");
 			}
 		}
 
-		const int generator_channels = generator->get_used_channels_mask();
-		const int mesher_channels = mesher->get_used_channels_mask();
+		if (can_check_generator_channels) {
+			const int generator_channels = generator->get_used_channels_mask();
+			const int mesher_channels = mesher->get_used_channels_mask();
 
-		if ((generator_channels & mesher_channels) == 0) {
-			return TTR("The current generator is providing voxel data only on channels that are not used by "
-					   "the current mesher. This will result in nothing being visible.");
+			if ((generator_channels & mesher_channels) == 0) {
+				return TTR("The current generator is providing voxel data only on channels that are not used by "
+						   "the current mesher. This will result in nothing being visible.");
+			}
 		}
 	}
 
@@ -96,16 +100,19 @@ String VoxelNode::get_configuration_warning() const {
 }
 
 int VoxelNode::get_used_channels_mask() const {
+	Ref<VoxelMesher> mesher = get_mesher();
+	if (mesher.is_valid()) {
+		return mesher->get_used_channels_mask();
+	}
 	Ref<VoxelGenerator> generator = get_generator();
-	Ref<VoxelStream> stream = get_stream();
-	int used_channels_mask = 0;
 	if (generator.is_valid()) {
-		used_channels_mask |= generator->get_used_channels_mask();
+		return generator->get_used_channels_mask();
 	}
+	Ref<VoxelStream> stream = get_stream();
 	if (stream.is_valid()) {
-		used_channels_mask |= stream->get_used_channels_mask();
+		return stream->get_used_channels_mask();
 	}
-	return used_channels_mask;
+	return 0;
 }
 
 void VoxelNode::_bind_methods() {

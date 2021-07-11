@@ -110,9 +110,11 @@ bool ProgramGraph::is_connected(PortLocation src, PortLocation dst) const {
 
 bool ProgramGraph::can_connect(PortLocation src, PortLocation dst) const {
 	if (is_connected(src, dst)) {
+		// Already exists
 		return false;
 	}
 	if (has_path(dst.node_id, src.node_id)) {
+		// Would create a loop
 		return false;
 	}
 	const Node *dst_node = get_node(dst.node_id);
@@ -416,6 +418,10 @@ PoolVector<int> ProgramGraph::get_node_ids() const {
 		}
 	}
 	return ids;
+}
+
+int ProgramGraph::get_nodes_count() const {
+	return _nodes.size();
 }
 
 uint32_t ProgramGraph::generate_node_id() {

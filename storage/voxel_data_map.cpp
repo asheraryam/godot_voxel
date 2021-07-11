@@ -1,12 +1,10 @@
-#include "voxel_map.h"
+#include "voxel_data_map.h"
 #include "../constants/cube_tables.h"
 #include "../util/macros.h"
-#include "voxel_block.h"
 #include <limits>
 
-VoxelMap::VoxelMap() :
+VoxelDataMap::VoxelDataMap() :
 		_last_accessed_block(nullptr) {
-
 	// TODO Make it configurable in editor (with all necessary notifications and updatings!)
 	set_block_size_pow2(VoxelConstants::DEFAULT_BLOCK_SIZE_PO2);
 
@@ -14,18 +12,18 @@ VoxelMap::VoxelMap() :
 	_default_voxel[VoxelBuffer::CHANNEL_SDF] = 255;
 }
 
-VoxelMap::~VoxelMap() {
+VoxelDataMap::~VoxelDataMap() {
 	PRINT_VERBOSE("Destroying VoxelMap");
 	clear();
 }
 
-void VoxelMap::create(unsigned int block_size_po2, int lod_index) {
+void VoxelDataMap::create(unsigned int block_size_po2, int lod_index) {
 	clear();
 	set_block_size_pow2(block_size_po2);
 	set_lod_index(lod_index);
 }
 
-void VoxelMap::set_block_size_pow2(unsigned int p) {
+void VoxelDataMap::set_block_size_pow2(unsigned int p) {
 	ERR_FAIL_COND_MSG(p < 1, "Block size is too small");
 	ERR_FAIL_COND_MSG(p > 8, "Block size is too big");
 
@@ -34,20 +32,20 @@ void VoxelMap::set_block_size_pow2(unsigned int p) {
 	_block_size_mask = _block_size - 1;
 }
 
-void VoxelMap::set_lod_index(int lod_index) {
+void VoxelDataMap::set_lod_index(int lod_index) {
 	ERR_FAIL_COND_MSG(lod_index < 0, "LOD index can't be negative");
 	ERR_FAIL_COND_MSG(lod_index >= 32, "LOD index is too big");
 
 	_lod_index = lod_index;
 }
 
-unsigned int VoxelMap::get_lod_index() const {
+unsigned int VoxelDataMap::get_lod_index() const {
 	return _lod_index;
 }
 
-int VoxelMap::get_voxel(Vector3i pos, unsigned int c) const {
+int VoxelDataMap::get_voxel(Vector3i pos, unsigned int c) const {
 	Vector3i bpos = voxel_to_block(pos);
-	const VoxelBlock *block = get_block(bpos);
+	const VoxelDataBlock *block = get_block(bpos);
 	if (block == nullptr) {
 		return _default_voxel[c];
 	}
@@ -55,34 +53,34 @@ int VoxelMap::get_voxel(Vector3i pos, unsigned int c) const {
 	return block->voxels->get_voxel(to_local(pos), c);
 }
 
-VoxelBlock *VoxelMap::create_default_block(Vector3i bpos) {
+VoxelDataBlock *VoxelDataMap::create_default_block(Vector3i bpos) {
 	Ref<VoxelBuffer> buffer(memnew(VoxelBuffer));
 	buffer->create(_block_size, _block_size, _block_size);
 	buffer->set_default_values(_default_voxel);
-	VoxelBlock *block = VoxelBlock::create(bpos, buffer, _block_size, _lod_index);
+	VoxelDataBlock *block = VoxelDataBlock::create(bpos, buffer, _block_size, _lod_index);
 	set_block(bpos, block);
 	return block;
 }
 
-VoxelBlock *VoxelMap::get_or_create_block_at_voxel_pos(Vector3i pos) {
+VoxelDataBlock *VoxelDataMap::get_or_create_block_at_voxel_pos(Vector3i pos) {
 	Vector3i bpos = voxel_to_block(pos);
-	VoxelBlock *block = get_block(bpos);
+	VoxelDataBlock *block = get_block(bpos);
 	if (block == nullptr) {
 		block = create_default_block(bpos);
 	}
 	return block;
 }
 
-void VoxelMap::set_voxel(int value, Vector3i pos, unsigned int c) {
-	VoxelBlock *block = get_or_create_block_at_voxel_pos(pos);
+void VoxelDataMap::set_voxel(int value, Vector3i pos, unsigned int c) {
+	VoxelDataBlock *block = get_or_create_block_at_voxel_pos(pos);
 	// TODO If it turns out to be a problem, use CoW
 	RWLockWrite lock(block->voxels->get_lock());
 	block->voxels->set_voxel(value, to_local(pos), c);
 }
 
-float VoxelMap::get_voxel_f(Vector3i pos, unsigned int c) const {
+float VoxelDataMap::get_voxel_f(Vector3i pos, unsigned int c) const {
 	Vector3i bpos = voxel_to_block(pos);
-	const VoxelBlock *block = get_block(bpos);
+	const VoxelDataBlock *block = get_block(bpos);
 	if (block == nullptr) {
 		return _default_voxel[c];
 	}
@@ -91,24 +89,24 @@ float VoxelMap::get_voxel_f(Vector3i pos, unsigned int c) const {
 	return block->voxels->get_voxel_f(lpos.x, lpos.y, lpos.z, c);
 }
 
-void VoxelMap::set_voxel_f(real_t value, Vector3i pos, unsigned int c) {
-	VoxelBlock *block = get_or_create_block_at_voxel_pos(pos);
+void VoxelDataMap::set_voxel_f(real_t value, Vector3i pos, unsigned int c) {
+	VoxelDataBlock *block = get_or_create_block_at_voxel_pos(pos);
 	Vector3i lpos = to_local(pos);
 	RWLockWrite lock(block->voxels->get_lock());
 	block->voxels->set_voxel_f(value, lpos.x, lpos.y, lpos.z, c);
 }
 
-void VoxelMap::set_default_voxel(int value, unsigned int channel) {
+void VoxelDataMap::set_default_voxel(int value, unsigned int channel) {
 	ERR_FAIL_INDEX(channel, VoxelBuffer::MAX_CHANNELS);
 	_default_voxel[channel] = value;
 }
 
-int VoxelMap::get_default_voxel(unsigned int channel) {
+int VoxelDataMap::get_default_voxel(unsigned int channel) {
 	ERR_FAIL_INDEX_V(channel, VoxelBuffer::MAX_CHANNELS, 0);
 	return _default_voxel[channel];
 }
 
-VoxelBlock *VoxelMap::get_block(Vector3i bpos) {
+VoxelDataBlock *VoxelDataMap::get_block(Vector3i bpos) {
 	if (_last_accessed_block && _last_accessed_block->position == bpos) {
 		return _last_accessed_block;
 	}
@@ -118,7 +116,7 @@ VoxelBlock *VoxelMap::get_block(Vector3i bpos) {
 #ifdef DEBUG_ENABLED
 		CRASH_COND(i >= _blocks.size());
 #endif
-		VoxelBlock *block = _blocks[i];
+		VoxelDataBlock *block = _blocks[i];
 		CRASH_COND(block == nullptr); // The map should not contain null blocks
 		_last_accessed_block = block;
 		return _last_accessed_block;
@@ -126,7 +124,7 @@ VoxelBlock *VoxelMap::get_block(Vector3i bpos) {
 	return nullptr;
 }
 
-const VoxelBlock *VoxelMap::get_block(Vector3i bpos) const {
+const VoxelDataBlock *VoxelDataMap::get_block(Vector3i bpos) const {
 	if (_last_accessed_block != nullptr && _last_accessed_block->position == bpos) {
 		return _last_accessed_block;
 	}
@@ -137,14 +135,14 @@ const VoxelBlock *VoxelMap::get_block(Vector3i bpos) const {
 		CRASH_COND(i >= _blocks.size());
 #endif
 		// TODO This function can't cache _last_accessed_block, because it's const, so repeated accesses are hashing again...
-		const VoxelBlock *block = _blocks[i];
+		const VoxelDataBlock *block = _blocks[i];
 		CRASH_COND(block == nullptr); // The map should not contain null blocks
 		return block;
 	}
 	return nullptr;
 }
 
-void VoxelMap::set_block(Vector3i bpos, VoxelBlock *block) {
+void VoxelDataMap::set_block(Vector3i bpos, VoxelDataBlock *block) {
 	ERR_FAIL_COND(block == nullptr);
 	CRASH_COND(bpos != block->position);
 	if (_last_accessed_block == nullptr || _last_accessed_block->position == bpos) {
@@ -158,11 +156,11 @@ void VoxelMap::set_block(Vector3i bpos, VoxelBlock *block) {
 	_blocks_map.set(bpos, i);
 }
 
-void VoxelMap::remove_block_internal(Vector3i bpos, unsigned int index) {
+void VoxelDataMap::remove_block_internal(Vector3i bpos, unsigned int index) {
 	// This function assumes the block is already freed
 	_blocks_map.erase(bpos);
 
-	VoxelBlock *moved_block = _blocks.back();
+	VoxelDataBlock *moved_block = _blocks.back();
 #ifdef DEBUG_ENABLED
 	CRASH_COND(index >= _blocks.size());
 #endif
@@ -176,11 +174,11 @@ void VoxelMap::remove_block_internal(Vector3i bpos, unsigned int index) {
 	}
 }
 
-VoxelBlock *VoxelMap::set_block_buffer(Vector3i bpos, Ref<VoxelBuffer> buffer) {
+VoxelDataBlock *VoxelDataMap::set_block_buffer(Vector3i bpos, Ref<VoxelBuffer> buffer) {
 	ERR_FAIL_COND_V(buffer.is_null(), nullptr);
-	VoxelBlock *block = get_block(bpos);
+	VoxelDataBlock *block = get_block(bpos);
 	if (block == nullptr) {
-		block = VoxelBlock::create(bpos, *buffer, _block_size, _lod_index);
+		block = VoxelDataBlock::create(bpos, *buffer, _block_size, _lod_index);
 		set_block(bpos, block);
 	} else {
 		block->voxels = buffer;
@@ -188,11 +186,11 @@ VoxelBlock *VoxelMap::set_block_buffer(Vector3i bpos, Ref<VoxelBuffer> buffer) {
 	return block;
 }
 
-bool VoxelMap::has_block(Vector3i pos) const {
+bool VoxelDataMap::has_block(Vector3i pos) const {
 	return /*(_last_accessed_block != nullptr && _last_accessed_block->pos == pos) ||*/ _blocks_map.has(pos);
 }
 
-bool VoxelMap::is_block_surrounded(Vector3i pos) const {
+bool VoxelDataMap::is_block_surrounded(Vector3i pos) const {
 	// TODO If that check proves to be too expensive with all blocks we deal with, cache it in VoxelBlocks
 	for (unsigned int i = 0; i < Cube::MOORE_NEIGHBORING_3D_COUNT; ++i) {
 		Vector3i bpos = pos + Cube::g_moore_neighboring_3d[i];
@@ -203,7 +201,7 @@ bool VoxelMap::is_block_surrounded(Vector3i pos) const {
 	return true;
 }
 
-void VoxelMap::get_buffer_copy(Vector3i min_pos, VoxelBuffer &dst_buffer, unsigned int channels_mask) {
+void VoxelDataMap::copy(Vector3i min_pos, VoxelBuffer &dst_buffer, unsigned int channels_mask) {
 	const Vector3i max_pos = min_pos + dst_buffer.get_size();
 
 	const Vector3i min_block_pos = voxel_to_block(min_pos);
@@ -219,32 +217,30 @@ void VoxelMap::get_buffer_copy(Vector3i min_pos, VoxelBuffer &dst_buffer, unsign
 					if (((1 << channel) & channels_mask) == 0) {
 						continue;
 					}
-					const VoxelBlock *block = get_block(bpos);
+					const VoxelDataBlock *block = get_block(bpos);
+					const Vector3i src_block_origin = block_to_voxel(bpos);
 
 					if (block != nullptr) {
 						const VoxelBuffer &src_buffer = **block->voxels;
 
 						dst_buffer.set_channel_depth(channel, src_buffer.get_channel_depth(channel));
 
-						const Vector3i offset = block_to_voxel(bpos);
-
 						RWLockRead lock(src_buffer.get_lock());
 
 						// Note: copy_from takes care of clamping the area if it's on an edge
 						dst_buffer.copy_from(src_buffer,
-								min_pos - offset,
-								max_pos - offset,
-								offset - min_pos,
+								min_pos - src_block_origin,
+								src_buffer.get_size(),
+								Vector3i(),
 								channel);
 
 					} else {
 						// For now, inexistent blocks default to hardcoded defaults, corresponding to "empty space".
 						// If we want to change this, we may have to add an API for that.
-						const Vector3i offset = block_to_voxel(bpos);
 						dst_buffer.fill_area(
 								_default_voxel[channel],
-								offset - min_pos,
-								offset - min_pos + block_size_v,
+								src_block_origin - min_pos,
+								src_block_origin - min_pos + block_size_v,
 								channel);
 					}
 				}
@@ -253,9 +249,8 @@ void VoxelMap::get_buffer_copy(Vector3i min_pos, VoxelBuffer &dst_buffer, unsign
 	}
 }
 
-void VoxelMap::paste(Vector3i min_pos, VoxelBuffer &src_buffer, unsigned int channels_mask, uint64_t mask_value,
+void VoxelDataMap::paste(Vector3i min_pos, VoxelBuffer &src_buffer, unsigned int channels_mask, uint64_t mask_value,
 		bool create_new_blocks) {
-
 	const Vector3i max_pos = min_pos + src_buffer.get_size();
 
 	const Vector3i min_block_pos = voxel_to_block(min_pos);
@@ -269,7 +264,7 @@ void VoxelMap::paste(Vector3i min_pos, VoxelBuffer &src_buffer, unsigned int cha
 					if (((1 << channel) & channels_mask) == 0) {
 						continue;
 					}
-					VoxelBlock *block = get_block(bpos);
+					VoxelDataBlock *block = get_block(bpos);
 
 					if (block == nullptr) {
 						if (create_new_blocks) {
@@ -279,25 +274,30 @@ void VoxelMap::paste(Vector3i min_pos, VoxelBuffer &src_buffer, unsigned int cha
 						}
 					}
 
-					const Vector3i offset = block_to_voxel(bpos);
+					const Vector3i dst_block_origin = block_to_voxel(bpos);
 
 					VoxelBuffer &dst_buffer = **block->voxels;
 					RWLockWrite lock(dst_buffer.get_lock());
 
 					if (mask_value != std::numeric_limits<uint64_t>::max()) {
-						dst_buffer.read_write_action(Rect3i(offset - min_pos, src_buffer.get_size()), channel,
-								[&src_buffer, mask_value, offset, channel](const Vector3i pos, uint64_t dst_v) {
-									const uint64_t src_v = src_buffer.get_voxel(pos + offset, channel);
+						const Box3i dst_box(min_pos - dst_block_origin, src_buffer.get_size());
+
+						const Vector3i src_offset = -dst_box.pos;
+
+						dst_buffer.read_write_action(dst_box, channel,
+								[&src_buffer, mask_value, src_offset, channel](const Vector3i pos, uint64_t dst_v) {
+									const uint64_t src_v = src_buffer.get_voxel(pos + src_offset, channel);
 									if (src_v == mask_value) {
 										return dst_v;
 									}
 									return src_v;
 								});
+
 					} else {
 						dst_buffer.copy_from(src_buffer,
-								offset - min_pos,
-								offset - max_pos,
-								min_pos - offset,
+								Vector3i(),
+								src_buffer.get_size(),
+								min_pos - dst_block_origin,
 								channel);
 					}
 				}
@@ -306,9 +306,9 @@ void VoxelMap::paste(Vector3i min_pos, VoxelBuffer &src_buffer, unsigned int cha
 	}
 }
 
-void VoxelMap::clear() {
+void VoxelDataMap::clear() {
 	for (auto it = _blocks.begin(); it != _blocks.end(); ++it) {
-		VoxelBlock *block = *it;
+		VoxelDataBlock *block = *it;
 		if (block == nullptr) {
 			ERR_PRINT("Unexpected nullptr in VoxelMap::clear()");
 		} else {
@@ -320,7 +320,7 @@ void VoxelMap::clear() {
 	_last_accessed_block = nullptr;
 }
 
-int VoxelMap::get_block_count() const {
+int VoxelDataMap::get_block_count() const {
 #ifdef DEBUG_ENABLED
 	const unsigned int blocks_map_size = _blocks_map.size();
 	CRASH_COND(_blocks.size() != blocks_map_size);
@@ -328,8 +328,8 @@ int VoxelMap::get_block_count() const {
 	return _blocks.size();
 }
 
-bool VoxelMap::is_area_fully_loaded(const Rect3i voxels_box) const {
-	Rect3i block_box = voxels_box.downscaled(get_block_size());
+bool VoxelDataMap::is_area_fully_loaded(const Box3i voxels_box) const {
+	Box3i block_box = voxels_box.downscaled(get_block_size());
 	return block_box.all_cells_match([this](Vector3i pos) {
 		return has_block(pos);
 	});

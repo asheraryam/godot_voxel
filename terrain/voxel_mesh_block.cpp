@@ -1,72 +1,17 @@
-#include "voxel_block.h"
+#include "voxel_mesh_block.h"
 #include "../constants/voxel_string_names.h"
+#include "../util/godot/funcs.h"
 #include "../util/macros.h"
 #include "../util/profiling.h"
 
 #include <scene/3d/spatial.h>
 #include <scene/resources/concave_polygon_shape.h>
 
-// Faster version of Mesh::create_trimesh_shape()
-// See https://github.com/Zylann/godot_voxel/issues/54
-//
-static Ref<ConcavePolygonShape> create_concave_polygon_shape(Vector<Array> surfaces) {
-	VOXEL_PROFILE_SCOPE();
-
-	PoolVector<Vector3> face_points;
-	int face_points_size = 0;
-
-	//find the correct size for face_points
-	for (int i = 0; i < surfaces.size(); i++) {
-		const Array &surface_arrays = surfaces[i];
-		PoolVector<int> indices = surface_arrays[Mesh::ARRAY_INDEX];
-
-		face_points_size += indices.size();
-	}
-	face_points.resize(face_points_size);
-
-	//copy the points into it
-	int face_points_offset = 0;
-	for (int i = 0; i < surfaces.size(); i++) {
-		const Array &surface_arrays = surfaces[i];
-
-		PoolVector<Vector3> positions = surface_arrays[Mesh::ARRAY_VERTEX];
-		PoolVector<int> indices = surface_arrays[Mesh::ARRAY_INDEX];
-
-		ERR_FAIL_COND_V(positions.size() < 3, Ref<ConcavePolygonShape>());
-		ERR_FAIL_COND_V(indices.size() < 3, Ref<ConcavePolygonShape>());
-		ERR_FAIL_COND_V(indices.size() % 3 != 0, Ref<ConcavePolygonShape>());
-
-		int face_points_count = face_points_offset + indices.size();
-
-		{
-			PoolVector<Vector3>::Write w = face_points.write();
-			PoolVector<int>::Read index_r = indices.read();
-			PoolVector<Vector3>::Read position_r = positions.read();
-
-			for (int p = face_points_offset; p < face_points_count; ++p) {
-				w[p] = position_r[index_r[p - face_points_offset]];
-			}
-		}
-
-		face_points_offset += indices.size();
-	}
-
-	Ref<ConcavePolygonShape> shape = memnew(ConcavePolygonShape);
-	shape->set_faces(face_points);
-	return shape;
-}
-
-// Helper
-VoxelBlock *VoxelBlock::create(Vector3i bpos, Ref<VoxelBuffer> buffer, unsigned int size, unsigned int p_lod_index) {
-	const int bs = size;
-	ERR_FAIL_COND_V(buffer.is_null(), nullptr);
-	ERR_FAIL_COND_V(buffer->get_size() != Vector3i(bs, bs, bs), nullptr);
-
-	VoxelBlock *block = memnew(VoxelBlock);
+VoxelMeshBlock *VoxelMeshBlock::create(Vector3i bpos, unsigned int size, unsigned int p_lod_index) {
+	VoxelMeshBlock *block = memnew(VoxelMeshBlock);
 	block->position = bpos;
 	block->lod_index = p_lod_index;
 	block->_position_in_voxels = bpos * (size << p_lod_index);
-	block->voxels = buffer;
 
 #ifdef VOXEL_DEBUG_LOD_MATERIALS
 	Ref<SpatialMaterial> debug_material;
@@ -86,13 +31,13 @@ VoxelBlock *VoxelBlock::create(Vector3i bpos, Ref<VoxelBuffer> buffer, unsigned 
 	return block;
 }
 
-VoxelBlock::VoxelBlock() {
+VoxelMeshBlock::VoxelMeshBlock() {
 }
 
-VoxelBlock::~VoxelBlock() {
+VoxelMeshBlock::~VoxelMeshBlock() {
 }
 
-void VoxelBlock::set_world(Ref<World> p_world) {
+void VoxelMeshBlock::set_world(Ref<World> p_world) {
 	if (_world != p_world) {
 		_world = p_world;
 
@@ -105,7 +50,7 @@ void VoxelBlock::set_world(Ref<World> p_world) {
 	}
 }
 
-void VoxelBlock::set_mesh(Ref<Mesh> mesh) {
+void VoxelMeshBlock::set_mesh(Ref<Mesh> mesh) {
 	// TODO Don't add mesh instance to the world if it's not visible.
 	// I suspect Godot is trying to include invisible mesh instances into the culling process,
 	// which is killing performance when LOD is used (i.e many meshes are in pool but hidden)
@@ -135,14 +80,14 @@ void VoxelBlock::set_mesh(Ref<Mesh> mesh) {
 	}
 }
 
-Ref<Mesh> VoxelBlock::get_mesh() const {
+Ref<Mesh> VoxelMeshBlock::get_mesh() const {
 	if (_mesh_instance.is_valid()) {
 		return _mesh_instance.get_mesh();
 	}
 	return Ref<Mesh>();
 }
 
-void VoxelBlock::set_transition_mesh(Ref<Mesh> mesh, int side) {
+void VoxelMeshBlock::set_transition_mesh(Ref<Mesh> mesh, int side) {
 	DirectMeshInstance &mesh_instance = _transition_mesh_instances[side];
 
 	if (mesh.is_valid()) {
@@ -169,25 +114,25 @@ void VoxelBlock::set_transition_mesh(Ref<Mesh> mesh, int side) {
 	}
 }
 
-bool VoxelBlock::has_mesh() const {
+bool VoxelMeshBlock::has_mesh() const {
 	return _mesh_instance.get_mesh().is_valid();
 }
 
-void VoxelBlock::drop_mesh() {
+void VoxelMeshBlock::drop_mesh() {
 	if (_mesh_instance.is_valid()) {
 		_mesh_instance.destroy();
 	}
 }
 
-void VoxelBlock::set_mesh_state(MeshState ms) {
+void VoxelMeshBlock::set_mesh_state(MeshState ms) {
 	_mesh_state = ms;
 }
 
-VoxelBlock::MeshState VoxelBlock::get_mesh_state() const {
+VoxelMeshBlock::MeshState VoxelMeshBlock::get_mesh_state() const {
 	return _mesh_state;
 }
 
-void VoxelBlock::set_visible(bool visible) {
+void VoxelMeshBlock::set_visible(bool visible) {
 	if (_visible == visible) {
 		return;
 	}
@@ -195,11 +140,11 @@ void VoxelBlock::set_visible(bool visible) {
 	_set_visible(_visible && _parent_visible);
 }
 
-bool VoxelBlock::is_visible() const {
+bool VoxelMeshBlock::is_visible() const {
 	return _visible;
 }
 
-void VoxelBlock::_set_visible(bool visible) {
+void VoxelMeshBlock::_set_visible(bool visible) {
 	if (_mesh_instance.is_valid()) {
 		set_mesh_instance_visible(_mesh_instance, visible);
 	}
@@ -214,7 +159,7 @@ void VoxelBlock::_set_visible(bool visible) {
 	}
 }
 
-void VoxelBlock::set_shader_material(Ref<ShaderMaterial> material) {
+void VoxelMeshBlock::set_shader_material(Ref<ShaderMaterial> material) {
 	_shader_material = material;
 
 	if (_mesh_instance.is_valid()) {
@@ -234,7 +179,7 @@ void VoxelBlock::set_shader_material(Ref<ShaderMaterial> material) {
 	}
 }
 
-//void VoxelBlock::set_transition_bit(uint8_t side, bool value) {
+//void VoxelMeshBlock::set_transition_bit(uint8_t side, bool value) {
 //	CRASH_COND(side >= Cube::SIDE_COUNT);
 //	uint32_t m = _transition_mask;
 //	if (value) {
@@ -245,7 +190,7 @@ void VoxelBlock::set_shader_material(Ref<ShaderMaterial> material) {
 //	set_transition_mask(m);
 //}
 
-void VoxelBlock::set_transition_mask(uint8_t m) {
+void VoxelMeshBlock::set_transition_mask(uint8_t m) {
 	CRASH_COND(m >= (1 << Cube::SIDE_COUNT));
 	const uint8_t diff = _transition_mask ^ m;
 	if (diff == 0) {
@@ -253,7 +198,6 @@ void VoxelBlock::set_transition_mask(uint8_t m) {
 	}
 	_transition_mask = m;
 	if (_shader_material.is_valid()) {
-
 		// TODO Needs translation here, because Cube:: tables use slightly different order...
 		// We may get rid of this once cube tables respects -x+x-y+y-z+z order
 		uint8_t bits[Cube::SIDE_COUNT];
@@ -278,7 +222,7 @@ void VoxelBlock::set_transition_mask(uint8_t m) {
 	}
 }
 
-void VoxelBlock::set_parent_visible(bool parent_visible) {
+void VoxelMeshBlock::set_parent_visible(bool parent_visible) {
 	if (_parent_visible && parent_visible) {
 		return;
 	}
@@ -286,7 +230,7 @@ void VoxelBlock::set_parent_visible(bool parent_visible) {
 	_set_visible(_visible && _parent_visible);
 }
 
-void VoxelBlock::set_parent_transform(const Transform &parent_transform) {
+void VoxelMeshBlock::set_parent_transform(const Transform &parent_transform) {
 	VOXEL_PROFILE_SCOPE();
 
 	if (_mesh_instance.is_valid() || _static_body.is_valid()) {
@@ -310,24 +254,7 @@ void VoxelBlock::set_parent_transform(const Transform &parent_transform) {
 	}
 }
 
-void VoxelBlock::set_needs_lodding(bool need_lodding) {
-	_needs_lodding = need_lodding;
-}
-
-bool VoxelBlock::is_modified() const {
-	return _modified;
-}
-
-void VoxelBlock::set_modified(bool modified) {
-#ifdef TOOLS_ENABLED
-	if (_modified == false && modified) {
-		PRINT_VERBOSE(String("Marking block {0} as modified").format(varray(position.to_vec3())));
-	}
-#endif
-	_modified = modified;
-}
-
-void VoxelBlock::set_collision_mesh(Vector<Array> surface_arrays, bool debug_collision, Spatial *node) {
+void VoxelMeshBlock::set_collision_mesh(Vector<Array> surface_arrays, bool debug_collision, Spatial *node, float margin) {
 	if (surface_arrays.size() == 0) {
 		drop_collision();
 		return;
@@ -335,6 +262,12 @@ void VoxelBlock::set_collision_mesh(Vector<Array> surface_arrays, bool debug_col
 
 	ERR_FAIL_COND(node == nullptr);
 	ERR_FAIL_COND_MSG(node->get_world() != _world, "Physics body and attached node must be from the same world");
+
+	Ref<Shape> shape = create_concave_polygon_shape(surface_arrays);
+	if (shape.is_null()) {
+		drop_collision();
+		return;
+	}
 
 	if (!_static_body.is_valid()) {
 		_static_body.create();
@@ -346,21 +279,42 @@ void VoxelBlock::set_collision_mesh(Vector<Array> surface_arrays, bool debug_col
 		_static_body.remove_shape(0);
 	}
 
-	Ref<Shape> shape = create_concave_polygon_shape(surface_arrays);
+	shape->set_margin(margin);
 
 	_static_body.add_shape(shape);
 	_static_body.set_debug(debug_collision, *_world);
 	_static_body.set_shape_enabled(0, _visible);
 }
 
-void VoxelBlock::drop_collision() {
+void VoxelMeshBlock::set_collision_layer(int layer) {
+	if (_static_body.is_valid()) {
+		_static_body.set_collision_layer(layer);
+	}
+}
+
+void VoxelMeshBlock::set_collision_mask(int mask) {
+	if (_static_body.is_valid()) {
+		_static_body.set_collision_mask(mask);
+	}
+}
+
+void VoxelMeshBlock::set_collision_margin(float margin) {
+	if (_static_body.is_valid()) {
+		Ref<Shape> shape = _static_body.get_shape(0);
+		if (shape.is_valid()) {
+			shape->set_margin(margin);
+		}
+	}
+}
+
+void VoxelMeshBlock::drop_collision() {
 	if (_static_body.is_valid()) {
 		_static_body.destroy();
 	}
 }
 
 // Returns `true` when finished
-bool VoxelBlock::update_fading(float speed) {
+bool VoxelMeshBlock::update_fading(float speed) {
 	// TODO Should probably not be on the block directly?
 	// Because we may want to fade transition meshes only
 

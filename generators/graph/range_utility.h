@@ -24,7 +24,7 @@ inline Interval sdf_union(Interval a, Interval b) {
 
 // Does a - b
 inline Interval sdf_subtract(Interval a, Interval b) {
-	return max_interval(a, b);
+	return max_interval(a, -b);
 }
 
 Interval sdf_smooth_union(Interval p_b, Interval p_a, float p_s);
@@ -62,13 +62,5 @@ Interval get_fnl_range_2d(const FastNoiseLite *noise, Interval x, Interval y);
 Interval get_fnl_range_3d(const FastNoiseLite *noise, Interval x, Interval y, Interval z);
 Interval2 get_fnl_gradient_range_2d(const FastNoiseLiteGradient *noise, Interval x, Interval y);
 Interval3 get_fnl_gradient_range_3d(const FastNoiseLiteGradient *noise, Interval x, Interval y, Interval z);
-
-#ifdef DEBUG_ENABLED
-namespace NoiseTests {
-
-void test_noises();
-
-} // namespace NoiseTests
-#endif
 
 #endif // RANGE_UTILITY_H

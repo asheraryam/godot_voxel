@@ -1,18 +1,16 @@
-#ifndef VOXEL_BLOCK_H
-#define VOXEL_BLOCK_H
+#ifndef VOXEL_MESH_BLOCK_H
+#define VOXEL_MESH_BLOCK_H
 
 #include "../constants/cube_tables.h"
-#include "../storage/voxel_buffer.h"
+#include "../storage/voxel_ref_count.h"
 #include "../util/godot/direct_mesh_instance.h"
 #include "../util/godot/direct_static_body.h"
-#include "voxel_viewer_ref_count.h"
-
-//#define VOXEL_DEBUG_LOD_MATERIALS
 
 class Spatial;
 
-// Internal structure holding a reference to mesh visuals, physics and a block of voxel data.
-class VoxelBlock {
+// Stores mesh and collider for one chunk of the rendered volume.
+// It doesn't store voxel data, because it may be using different block size, or different data structure.
+class VoxelMeshBlock {
 public:
 	enum MeshState {
 		MESH_NEVER_UPDATED = 0, // TODO Redundant with MESH_NEED_UPDATE?
@@ -28,11 +26,11 @@ public:
 		FADING_OUT
 	};
 
-	Ref<VoxelBuffer> voxels;
 	Vector3i position;
 	unsigned int lod_index = 0;
 	bool pending_transition_update = false;
-	VoxelViewerRefCount viewers;
+	VoxelRefCount mesh_viewers;
+	VoxelRefCount collision_viewers;
 	bool got_first_mesh_update = false;
 
 	uint32_t last_collider_update_time = 0;
@@ -49,9 +47,9 @@ public:
 	// Hence the need to use this boolean.
 	bool active = false;
 
-	static VoxelBlock *create(Vector3i bpos, Ref<VoxelBuffer> buffer, unsigned int size, unsigned int p_lod_index);
+	static VoxelMeshBlock *create(Vector3i bpos, unsigned int size, unsigned int p_lod_index);
 
-	~VoxelBlock();
+	~VoxelMeshBlock();
 
 	void set_world(Ref<World> p_world);
 
@@ -68,7 +66,10 @@ public:
 
 	// Collisions
 
-	void set_collision_mesh(Vector<Array> surface_arrays, bool debug_collision, Spatial *node);
+	void set_collision_mesh(Vector<Array> surface_arrays, bool debug_collision, Spatial *node, float margin);
+	void set_collision_layer(int layer);
+	void set_collision_mask(int mask);
+	void set_collision_margin(float margin);
 	void drop_collision();
 	// TODO Collision layer and mask
 
@@ -87,12 +88,6 @@ public:
 	//void set_transition_bit(uint8_t side, bool value);
 	inline uint8_t get_transition_mask() const { return _transition_mask; }
 
-	void set_needs_lodding(bool need_lodding);
-	inline bool get_needs_lodding() const { return _needs_lodding; }
-
-	bool is_modified() const;
-	void set_modified(bool modified);
-
 	template <typename F>
 	void for_each_mesh_instance_with_transform(F f) const {
 		const Transform local_transform(Basis(), _position_in_voxels.to_vec3());
@@ -109,7 +104,7 @@ public:
 	bool update_fading(float speed);
 
 private:
-	VoxelBlock();
+	VoxelMeshBlock();
 
 	void _set_visible(bool visible);
 	inline bool _is_transition_visible(int side) const { return _transition_mask & (1 << side); }
@@ -142,12 +137,6 @@ private:
 	bool _parent_visible = true;
 	MeshState _mesh_state = MESH_NEVER_UPDATED;
 	uint8_t _transition_mask = 0;
-
-	// The block was edited, which requires its LOD counterparts to be recomputed
-	bool _needs_lodding = false;
-
-	// Indicates if this block is different from the time it was loaded (should be saved)
-	bool _modified = false;
 };
 
-#endif // VOXEL_BLOCK_H
+#endif // VOXEL_MESH_BLOCK_H
